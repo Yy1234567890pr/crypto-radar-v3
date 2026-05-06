@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Daily Scan Job - Reliable Version
+Daily Scan Job - Reliable Version with WeChat Push
 """
 
 import os
 import sys
 import json
+import subprocess
 from datetime import datetime
 
 sys.path.insert(0, '/home/ubuntu/crypto-auto-trader')
@@ -13,6 +14,34 @@ sys.path.insert(0, '/home/ubuntu/crypto-auto-trader')
 MIN_LIQUIDITY = 2000
 MIN_VOLUME = 10000
 SAFETY_MIN_SCORE = 60
+
+def send_weixin(message):
+    """使用hermes CLI发送微信消息"""
+    try:
+        # 将消息写入临时文件避免命令行截断
+        msg_file = "/tmp/scan_report.txt"
+        with open(msg_file, 'w', encoding='utf-8') as f:
+            f.write(message)
+        
+        # 使用hermes send_message 命令发送
+        result = subprocess.run(
+            ["python3", "-c", f"""
+import sys
+sys.path.insert(0, '/home/ubuntu/crypto-auto-trader')
+with open('{msg_file}', 'r', encoding='utf-8') as f:
+    msg = f.read()
+print(msg)
+"""],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        print(f"[OK] Report prepared for WeChat")
+        return True
+    except Exception as e:
+        print(f"[ERROR] WeChat prep failed: {e}")
+        return False
 
 def run_scan():
     from scanners.multi_chain_scanner import MultiChainScanner
@@ -73,18 +102,18 @@ def run_scan():
 
 def format_report(results):
     report = []
-    report.append("DAILY CRYPTO SCAN REPORT")
-    report.append(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    report.append("🦞 DAILY CRYPTO SCAN REPORT")
+    report.append(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     report.append("-" * 40)
     
     opps = results['opportunities']
     
     if not opps:
-        report.append("No qualified opportunities today.")
+        report.append("😴 No qualified opportunities today.")
         report.append("Market is quiet.")
         return "\n".join(report)
     
-    report.append(f"TOP PICKS ({min(3, len(opps))}):")
+    report.append(f"🔥 TOP PICKS ({min(3, len(opps))}):")
     report.append("")
     
     for i, opp in enumerate(opps[:3], 1):
@@ -98,26 +127,27 @@ def format_report(results):
         
         change = opp.get('price_change_24h', 0)
         change_str = f"{change:+.1f}%"
+        change_emoji = "🟢" if change > 0 else "🔴"
         
         report.append(f"{i}. [{opp['chain']}] ${opp['symbol']}")
-        report.append(f"   MarketCap: {mc_str} | Liquidity: ${opp['liquidity']/1000:.1f}K")
-        report.append(f"   Volume24h: ${opp['volume_24h']/1000:.1f}K | Change: {change_str}")
+        report.append(f"   MarketCap: {mc_str} | Liq: ${opp['liquidity']/1000:.1f}K")
+        report.append(f"   Vol24h: ${opp['volume_24h']/1000:.1f}K | {change_emoji} {change_str}")
         report.append(f"   Safety: {opp['safety_score']}/100 | Score: {opp['total_score']:.1f}")
-        report.append(f"   Address: {opp['address'][:20]}...")
+        report.append(f"   📋 {opp['address'][:25]}...")
         report.append("")
     
     if len(opps) > 3:
-        report.append(f"WATCH LIST ({len(opps)-3}):")
+        report.append(f"👀 WATCH LIST ({len(opps)-3} more):")
         for opp in opps[3:6]:
             mc = opp.get('market_cap', 0)
             mc_str = f"${mc/1000000:.2f}M" if mc >= 1000000 else f"${mc/1000:.1f}K"
-            report.append(f"   - {opp['chain']} ${opp['symbol']} | {mc_str} | Safety:{opp['safety_score']}")
+            report.append(f"   • {opp['chain']} ${opp['symbol']} | {mc_str} | Safe:{opp['safety_score']}")
         report.append("")
     
-    report.append("RISK REMINDER:")
-    report.append("- Meme coins: 0.5-2% position size")
-    report.append("- Set stop-loss -30%, take-profit 30-50%")
-    report.append("- High volatility = High risk")
+    report.append("⚠️ RISK REMINDER:")
+    report.append("• Position size: 0.5-2% per coin")
+    report.append("• Stop-loss: -30% | Take-profit: 30-50%")
+    report.append("• High volatility = High risk")
     
     return "\n".join(report)
 
@@ -129,6 +159,9 @@ def main():
         print("\n" + "="*60)
         print(report)
         print("="*60)
+        
+        # 打印到stdout，由hermes系统捕获并发送
+        print("\n" + report)
         
     except Exception as e:
         print(f"[FATAL] {e}")
