@@ -1,0 +1,34 @@
+name: 🦞 Daily Crypto Scan
+
+on:
+  schedule:
+    # 每天UTC 12:00 (北京时间20:00)
+    - cron: '0 12 * * *'
+  workflow_dispatch: # 手动触发
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests aiohttp pandas
+    
+    - name: Run Daily Scan
+      run: |
+        python daily_scan_job.py --output results/$(date +%Y%m%d).json
+    
+    - name: Commit results
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        git add results/
+        git commit -m "🦞 Daily scan $(date +%Y-%m-%d)" || echo "No changes"
+        git push
