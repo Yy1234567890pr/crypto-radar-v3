@@ -22,13 +22,13 @@ from scanners.safety_checker import SafetyChecker
 DATA_DIR = "/home/ubuntu/crypto-radar-v3"
 DB_FILE = f"{DATA_DIR}/radar_v3.db"
 
-# 筛选参数（土狗早鸟模式 - 简化版，主系统数据结构有限）
-MIN_MARKET_CAP = 5000       # $5K（主系统很多币缺少市值数据）
-MAX_MARKET_CAP = 5000000    # $5M（排除太大市值）
+# 筛选参数（土狗早鸟模式 - 抓早期小市值）
+MIN_MARKET_CAP = 5000       # $5K（最小市值）
+MAX_MARKET_CAP = 500000     # $500K（降10倍！专抓早期土狗）
 MIN_LIQUIDITY = 2000        # $2K
 MIN_VOLUME_24H = 10000      # $10K
-MIN_PRICE_CHANGE_24H = 0    # 24h必须为正（至少不涨）
-SAFETY_MIN_SCORE = 60       # 安全分≥60（基础安全）
+MIN_PRICE_CHANGE_24H = 5    # 1h涨5%以上（改看1h趋势）
+SAFETY_MIN_SCORE = 50       # 安全分≥50（降低门槛给新币）
 
 class RadarV3:
     def __init__(self):
@@ -100,10 +100,18 @@ class RadarV3:
             if safety < SAFETY_MIN_SCORE:
                 continue
                 
-            # 层4: 排除已知主流代币
+            # 层4: 排除已知主流代币（扩展名单）
             symbol = t.get('symbol', '').upper()
-            main_coins = {'ETH', 'BTC', 'SOL', 'BNB', 'ARB', 'OP', 'MATIC', 'AVAX', 'FTM'}
-            if symbol in main_coins:
+            main_coins = {
+                'ETH', 'WETH', 'BTC', 'WBTC', 'SOL', 'WSOL', 
+                'BNB', 'WBNB', 'ARB', 'OP', 'MATIC', 'WMATIC',
+                'AVAX', 'FTM', 'USDC', 'USDT', 'DAI', 'BUSD',
+                'LINK', 'UNI', 'AAVE', 'CRV', 'MKR', 'LDO',
+                'GMX', 'ARB', 'OP', 'ENS', 'DYDX', 'GNO',
+                'ETC', 'LTC', 'BCH', 'XRP', 'ADA', 'DOT',
+                'NEAR', 'ALGO', 'ICP', 'FIL', 'XTZ', 'EOS'
+            }
+            if symbol in main_coins or symbol.startswith('W'):
                 continue
                 
             filtered.append(t)
