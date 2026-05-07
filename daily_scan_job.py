@@ -1,123 +1,105 @@
 #!/usr/bin/env python3
 """
-Daily Scan Job - Reliable Version with WeChat Push
+Daily Scan Job - 终极简化版
+直接用 radar_v3_pro 的集成扫描
 """
 
 import os
 import sys
 import json
-import subprocess
 from datetime import datetime
 
-sys.path.insert(0, '/home/ubuntu/crypto-auto-trader')
-
-MIN_LIQUIDITY = 2000
-MIN_VOLUME = 10000
-SAFETY_MIN_SCORE = 60
-
-def send_weixin(message):
-    """使用hermes CLI发送微信消息"""
-    try:
-        # 将消息写入临时文件避免命令行截断
-        msg_file = "/tmp/scan_report.txt"
-        with open(msg_file, 'w', encoding='utf-8') as f:
-            f.write(message)
-        
-        # 使用hermes send_message 命令发送
-        result = subprocess.run(
-            ["python3", "-c", f"""
-import sys
-sys.path.insert(0, '/home/ubuntu/crypto-auto-trader')
-with open('{msg_file}', 'r', encoding='utf-8') as f:
-    msg = f.read()
-print(msg)
-"""],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        
-        print(f"[OK] Report prepared for WeChat")
-        return True
-    except Exception as e:
-        print(f"[ERROR] WeChat prep failed: {e}")
-        return False
+sys.path.insert(0, '/home/ubuntu/crypto-radar-v3')
 
 def run_scan():
-    from scanners.multi_chain_scanner import MultiChainScanner
+    """运行每日扫描"""
+    print("="*60)
+    print(f"🦞 DAILY EARLY-BIRD SCAN - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print("="*60)
     
-    scanner = MultiChainScanner()
+    from radar_v3_pro import RadarV3
+    radar = RadarV3()
+    
+    # 直接用RadarV3的高质量扫描方法
+    print("\n📡 开始全链扫描...")
+    tokens = radar.scan_with_quality_filter()
+    print(f"   找到 {len(tokens)} 个符合条件的币")
+    
+    # 加安全检测
+    from goplus_client import GoPlusClient
+    goplus = GoPlusClient()
+    opportunities = []
+    
+    for t in tokens[:15]:  # 只处理前15个
+        try:
+            chain = t.get('chain', 'ethereum')
+            address = t.get('address', '')
+            safety_result = goplus.get_token_security(chain, address)
+            
+            # 计算安全分
+            safety_score = 100
+            if safety_result.get('is_honeypot'):
+                safety_score -= 50
+            if safety_result.get('buy_tax', 0) > 5:
+                safety_score -= 20
+            if safety_result.get('sell_tax', 0) > 5:
+                safety_score -= 20
+            
+            opp = {
+                'chain': chain.upper(),
+                'symbol': t.get('symbol', 'N/A'),
+                'name': t.get('name', ''),
+                'address': address,
+                'price': t.get('price', 0),
+                'market_cap': t.get('market_cap', 0),
+                'liquidity': t.get('liquidity', 0),
+                'volume_24h': t.get('volume_24h', 0),
+                'price_change_24h': t.get('price_change_24h', 0),
+                'safety_score': safety_score,
+                'total_score': t.get('total_score', 0)
+            }
+            opportunities.append(opp)
+        except:
+            continue
+    
+    # 排序
+    opportunities.sort(key=lambda x: x.get('total_score', 0), reverse=True)
     
     results = {
         'timestamp': datetime.now().isoformat(),
-        'opportunities': [],
-        'errors': []
+        'opportunities': opportunities,
+        'count': len(opportunities)
     }
     
-    print("="*60)
-    print(f"DAILY EARLY-BIRD SCAN - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print("="*60)
-    
-    try:
-        all_tokens = scanner.scan_all_chains(limit_per_chain=15)
-        print(f"\n[OK] Found {len(all_tokens)} tokens total")
-        
-        for token in all_tokens:
-            volume = token.get('volume_24h', 0)
-            liquidity = token.get('liquidity', 0)
-            safety_score = token.get('safety_score', 0)
-            
-            if volume >= MIN_VOLUME and liquidity >= MIN_LIQUIDITY and safety_score >= SAFETY_MIN_SCORE:
-                opp = {
-                    'chain': token.get('chain', 'unknown').upper(),
-                    'symbol': token.get('symbol', 'N/A'),
-                    'name': token.get('name', ''),
-                    'address': token.get('address', ''),
-                    'price': token.get('price', 0),
-                    'market_cap': token.get('market_cap', 0),
-                    'liquidity': liquidity,
-                    'volume_24h': volume,
-                    'price_change_24h': token.get('price_change_24h', 0),
-                    'safety_score': safety_score,
-                    'total_score': token.get('total_score', 0),
-                    'url': token.get('url', '')
-                }
-                results['opportunities'].append(opp)
-        
-        results['opportunities'].sort(key=lambda x: x['total_score'], reverse=True)
-        print(f"[OK] Qualified opportunities: {len(results['opportunities'])}")
-        
-    except Exception as e:
-        results['errors'].append(str(e))
-        print(f"[ERROR] Scan failed: {e}")
-    
+    # 保存
     output_file = f"/home/ubuntu/crypto-radar-v3/daily_scan_{datetime.now().strftime('%Y%m%d')}.json"
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
     
-    print(f"[OK] Saved to: {output_file}")
+    print(f"[OK] 保存到: {output_file}")
     print("="*60)
     
     return results
 
 def format_report(results):
+    """格式化报告"""
     report = []
     report.append("🦞 DAILY CRYPTO SCAN REPORT")
     report.append(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     report.append("-" * 40)
     
-    opps = results['opportunities']
+    opps = results.get('opportunities', [])
     
     if not opps:
-        report.append("😴 No qualified opportunities today.")
-        report.append("Market is quiet.")
+        report.append("😴 今日无合适标的")
+        report.append("市场安静或筛选条件严格")
         return "\n".join(report)
     
     report.append(f"🔥 TOP PICKS ({min(3, len(opps))}):")
     report.append("")
     
     for i, opp in enumerate(opps[:3], 1):
-        mc = opp.get('market_cap', 0)
+        mc = opp['market_cap'] or 0
         if mc >= 1000000:
             mc_str = f"${mc/1000000:.2f}M"
         elif mc >= 1000:
@@ -125,29 +107,16 @@ def format_report(results):
         else:
             mc_str = f"${mc:.0f}"
         
-        change = opp.get('price_change_24h', 0)
-        change_str = f"{change:+.1f}%"
+        change = opp['price_change_24h'] or 0
         change_emoji = "🟢" if change > 0 else "🔴"
         
         report.append(f"{i}. [{opp['chain']}] ${opp['symbol']}")
-        report.append(f"   MarketCap: {mc_str} | Liq: ${opp['liquidity']/1000:.1f}K")
-        report.append(f"   Vol24h: ${opp['volume_24h']/1000:.1f}K | {change_emoji} {change_str}")
-        report.append(f"   Safety: {opp['safety_score']}/100 | Score: {opp['total_score']:.1f}")
-        report.append(f"   📋 {opp['address'][:25]}...")
+        report.append(f"   市值: {mc_str} | 流动: ${opp['liquidity']/1000:.1f}K")
+        report.append(f"   成交: ${opp['volume_24h']/1000:.1f}K | {change_emoji} {change:+.1f}%")
+        report.append(f"   安全: {opp['safety_score']}/100 | 📋 {opp['address'][:25]}...")
         report.append("")
     
-    if len(opps) > 3:
-        report.append(f"👀 WATCH LIST ({len(opps)-3} more):")
-        for opp in opps[3:6]:
-            mc = opp.get('market_cap', 0)
-            mc_str = f"${mc/1000000:.2f}M" if mc >= 1000000 else f"${mc/1000:.1f}K"
-            report.append(f"   • {opp['chain']} ${opp['symbol']} | {mc_str} | Safe:{opp['safety_score']}")
-        report.append("")
-    
-    report.append("⚠️ RISK REMINDER:")
-    report.append("• Position size: 0.5-2% per coin")
-    report.append("• Stop-loss: -30% | Take-profit: 30-50%")
-    report.append("• High volatility = High risk")
+    report.append("⚠️ 风险提示: 单币0.5-2% 止损-30% 止盈30-50%")
     
     return "\n".join(report)
 
@@ -156,11 +125,7 @@ def main():
         results = run_scan()
         report = format_report(results)
         
-        print("\n" + "="*60)
-        print(report)
-        print("="*60)
-        
-        # 打印到stdout，由hermes系统捕获并发送
+        # 打印报告，Hermes系统会捕获并发送到微信
         print("\n" + report)
         
     except Exception as e:
