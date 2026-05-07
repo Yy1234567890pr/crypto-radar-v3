@@ -22,13 +22,13 @@ from scanners.safety_checker import SafetyChecker
 DATA_DIR = "/home/ubuntu/crypto-radar-v3"
 DB_FILE = f"{DATA_DIR}/radar_v3.db"
 
-# 筛选参数（土狗早鸟模式 - 抓早期小市值）
-MIN_MARKET_CAP = 5000       # $5K（最小市值）
-MAX_MARKET_CAP = 500000     # $500K（降10倍！专抓早期土狗）
-MIN_LIQUIDITY = 2000        # $2K
-MIN_VOLUME_24H = 10000      # $10K
-MIN_PRICE_CHANGE_24H = 5    # 1h涨5%以上（改看1h趋势）
-SAFETY_MIN_SCORE = 50       # 安全分≥50（降低门槛给新币）
+# 筛选参数（放宽版 - 抓更多土狗机会）
+MIN_MARKET_CAP = 1000       # $1K（更低门槛）
+MAX_MARKET_CAP = 2000000    # $2M（更高上限）
+MIN_LIQUIDITY = 500         # $500（降4倍）
+MIN_VOLUME_24H = 2000       # $2K（降5倍）
+MIN_PRICE_CHANGE_24H = 1    # 24h涨1%以上（放宽涨幅）
+SAFETY_MIN_SCORE = 30       # 安全分≥30（新币容忍更高风险）
 
 class RadarV3:
     def __init__(self):
@@ -74,44 +74,35 @@ class RadarV3:
         # 多层过滤（基于主系统数据结构）
         filtered = []
         for t in tokens:
-            # 层1: 基础门槛
-            mc = t.get('market_cap', 0)
-            # 市值=0表示是主链代币（如ETH），这些不是土狗
-            if mc == 0 or mc < MIN_MARKET_CAP:
-                continue
-            if mc > MAX_MARKET_CAP:
-                continue
+            # 层1: 基础门槛（放宽：允许mc=0，只要流动性和成交量够）
+            mc = t.get('market_cap', 0) or 0
+            # 市值>0时才检查范围，土狗早期经常没市值数据
+            if mc > 0:
+                if mc < MIN_MARKET_CAP or mc > MAX_MARKET_CAP:
+                    continue
                 
-            liq = t.get('liquidity', 0)
+            liq = t.get('liquidity', 0) or 0
             if liq < MIN_LIQUIDITY:
                 continue
                 
-            vol = t.get('volume_24h', 0)
+            vol = t.get('volume_24h', 0) or 0
             if vol < MIN_VOLUME_24H:
                 continue
                 
-            # 层2: 价格动量
+            # 层2: 价格动量（只要有涨幅即可，放松到-10%）
             change = t.get('price_change_24h', -999)
-            if change < MIN_PRICE_CHANGE_24H:
+            if change < -10:  # 允许跌10%以内的币
                 continue
                 
-            # 层3: 安全检查
-            safety = t.get('safety_score', 0)
-            if safety < SAFETY_MIN_SCORE:
-                continue
+            # 层3: 安全检查（完全跳过，全部通过后人工判断）
+            # safety = t.get('safety_score', 0) or 0
+            # if safety > 0 and safety < SAFETY_MIN_SCORE:
+            #     continue
                 
-            # 层4: 排除已知主流代币（扩展名单）
+            # 层4: 排除已知主流代币（精简名单）
             symbol = t.get('symbol', '').upper()
-            main_coins = {
-                'ETH', 'WETH', 'BTC', 'WBTC', 'SOL', 'WSOL', 
-                'BNB', 'WBNB', 'ARB', 'OP', 'MATIC', 'WMATIC',
-                'AVAX', 'FTM', 'USDC', 'USDT', 'DAI', 'BUSD',
-                'LINK', 'UNI', 'AAVE', 'CRV', 'MKR', 'LDO',
-                'GMX', 'ARB', 'OP', 'ENS', 'DYDX', 'GNO',
-                'ETC', 'LTC', 'BCH', 'XRP', 'ADA', 'DOT',
-                'NEAR', 'ALGO', 'ICP', 'FIL', 'XTZ', 'EOS'
-            }
-            if symbol in main_coins or symbol.startswith('W'):
+            main_coins = {'ETH', 'WETH', 'BTC', 'WBTC', 'SOL', 'WSOL', 'BNB', 'WBNB'}
+            if symbol in main_coins:
                 continue
                 
             filtered.append(t)
