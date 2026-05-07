@@ -15,11 +15,17 @@ from urllib.parse import urlencode
 
 # 监控配置
 TARGET_ACCOUNTS = [
+    # 原有账号
     "VitalikButerin", "cz_binance", "aantonop", "saylor", "RaoulGMI",
     "100trillionUSD", "awasunyin", "Capybara_BTC", "Bitcoin", "MicroStrategy",
     "ethereum", "solana", "BNBCHAIN", "OpenAI", "GoogleDeepmind",
     "a16zcrypto", "Filecoin", "Helium", "unisat_wallet", "L1Fxyz",
-    "Lookonchain", "ArkhamIntel"
+    "Lookonchain", "ArkhamIntel",
+    
+    # 用户推荐的土狗大V
+    "Ga_ke",           # 黑鬼
+    "blknoiz06",       # 别名相关
+    "traderpow"        # pow交易员
 ]
 
 KEYWORDS = [
